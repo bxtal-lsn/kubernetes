@@ -6,6 +6,12 @@ sudo apt upgrade
 sudo snap install multipass
 ```
 
+To fast-track to build multiple instances from the cloudinit.yaml file run e.g.
+```bash
+./launch-instances.sh cp1 worker1 worker2 worker3 worker4
+```
+Then skip ahead to `# Install and Configure Network Plugin 'Calico'` further down in this file
+
 # Launch
 ## Launch basic instance
 ```bash

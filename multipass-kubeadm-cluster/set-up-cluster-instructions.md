@@ -152,6 +152,17 @@ When the instance is ready, shell into the instance with `multipass shell worker
 ```bash
 sudo kubeadm join --token <token> <control-plane-host>:<control-plane-port> --discovery-token-ca-cert-hash sha256:<hash>
 ```
+
+[Important]
+To get the exact information for the join run
+```bash
+multipass shell <controlplane-name> 
+```
+When inside, run
+```bash
+sudo kubeadm token create --print-join-command
+```
+
 The information/token was generated with the kubeadm init command.  
 If you need to recover the information, shell into `multipass shell cp1`  
 and run 

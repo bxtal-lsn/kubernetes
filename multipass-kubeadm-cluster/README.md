@@ -134,6 +134,11 @@ It should return something like
 node/<your-hostname> untainted
 ```
 
+Then taint the control plane to not get any schedules, only the workers
+```bash
+kubectl taint nodes <control-plane-name-or-ip> node-role.kubernetes.io/control-plane=:NoSchedule
+```
+
 Confirm that you have a node running in your cluster
 ```bash
 kubectl get nodes -o wide

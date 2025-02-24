@@ -1,0 +1,170 @@
+---
+- name: Setup Kubernetes Node with Docker
+  hosts: k8s_nodes
+  become: true
+
+  tasks:
+    - name: Update package cache
+      apt:
+        update_cache: yes
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: yes
+
+    - name: Create kernel module configuration
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+        mode: '0644'
+
+    - name: Create sysctl configuration
+      copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+        mode: '0644'
+
+    - name: Disable swap
+      block:
+        - name: Disable swap immediately
+          command: swapoff -a
+          changed_when: false
+        - name: Remove swap from fstab
+          replace:
+            path: /etc/fstab
+            regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+            replace: ''
+
+    - name: Load kernel modules
+      command: "modprobe {{ item }}"
+      loop:
+        - overlay
+        - br_netfilter
+      changed_when: false
+
+    - name: Apply sysctl params
+      command: sysctl --system
+      changed_when: false
+
+    - name: Remove conflicting packages
+      apt:
+        name:
+          - docker
+          - docker.io
+          - docker-doc
+          - docker-compose
+          - docker-compose-v2
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+
+    - name: Install required packages
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: Create keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      shell: |
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+
+    - name: Add Docker repository
+      shell: |
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    - name: Update package lists
+      apt:
+        update_cache: yes
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Create Docker daemon configuration
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "exec-opts": ["native.cgroupdriver=systemd"],
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m"
+            },
+            "storage-driver": "overlay2"
+          }
+        mode: '0644'
+        create: yes
+        directory_mode: '0755'
+
+    - name: Create Docker service directory
+      file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Restart Docker
+      systemd:
+        name: docker
+        state: restarted
+        daemon_reload: yes
+        enabled: yes
+
+    - name: Add Kubernetes GPG key
+      shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes repository
+      shell: |
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Update package lists again
+      apt:
+        update_cache: yes
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Hold Kubernetes packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Enable kubelet service
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+
+    - name: Pull kubeadm images
+      command: kubeadm config images pull
+      changed_when: false

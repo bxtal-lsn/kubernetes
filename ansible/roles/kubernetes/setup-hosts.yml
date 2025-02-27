@@ -1,0 +1,33 @@
+---
+- name: Remove unwanted entries from /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    regexp: "{{ item }}"
+    state: absent
+  loop:
+    - "^.*ubuntu-jammy.*$"
+    - "^.*{{ ansible_hostname }}.*$"
+
+- name: Get primary IP address
+  shell: "ip route | grep default | grep -Pv '10\\.\\d+\\.\\d+\\.\\d+' | awk '{ print $9 }'"
+  register: primary_ip
+  changed_when: false
+
+- name: Set PRIMARY_IP environment variable
+  lineinfile:
+    path: /etc/environment
+    line: "PRIMARY_IP={{ primary_ip.stdout }}"
+    state: present
+
+- name: Add controlplane entry to /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars['controlplane']['ansible_host'] }} controlplane"
+    state: present
+
+- name: Add worker nodes to /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ hostvars[item]['ansible_host'] }} {{ item }}"
+    state: present
+  loop: "{{ groups['workers'] }}"

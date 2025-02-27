@@ -1,0 +1,36 @@
+---
+# ansible/playbooks/kubernetes.yml
+- name: Common configuration for all nodes
+  hosts: k8s_cluster
+  become: yes
+  tags: 
+    - common
+  tasks:
+    - include_tasks: ../tasks/kubernetes/setup-hosts.yml
+    - include_tasks: ../tasks/kubernetes/update-dns.yml
+    - include_tasks: ../tasks/kubernetes/ssh.yml
+    - include_tasks: ../tasks/kubernetes/setup-kernel.yml
+      
+- name: Kubernetes setup for all nodes
+  hosts: k8s_cluster
+  become: yes
+  tags:
+    - k8s-setup
+  tasks:
+    - include_tasks: ../tasks/kubernetes/node-setup.yml
+
+- name: Initialize Kubernetes control plane
+  hosts: control_plane
+  become: yes
+  tags:
+    - control-plane
+  tasks:
+    - include_tasks: ../tasks/kubernetes/control-plane-init.yml
+
+- name: Join worker nodes to cluster
+  hosts: workers
+  become: yes
+  tags:
+    - workers
+  tasks:
+    - include_tasks: ../tasks/kubernetes/worker-join.yml

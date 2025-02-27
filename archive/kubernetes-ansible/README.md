@@ -1,5 +1,4 @@
 # Kubernetes Cluster Deployment with Ansible
-
 This repository contains Ansible playbooks to set up a Kubernetes cluster on existing Ubuntu 24.04 VMs.
 
 ## Prerequisites

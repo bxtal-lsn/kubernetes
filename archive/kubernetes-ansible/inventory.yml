@@ -6,13 +6,16 @@ all:
         control_plane:
           hosts:
             controlplane:
-              ansible_host: 10.203.146.164
+              ansible_host: 10.203.146.213
         workers:
           hosts:
             node01:
-              ansible_host: 10.203.146.126
+              ansible_host: 10.203.146.194
             node02:
-              ansible_host: 10.203.146.2
+              ansible_host: 10.203.146.61
+            node03:
+              ansible_host: 10.203.146.193
+
   vars:
     ansible_user: ubuntu
     ansible_become: yes

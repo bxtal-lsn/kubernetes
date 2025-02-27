@@ -1,0 +1,19 @@
+# minimal-postgres.yaml
+apiVersion: "acid.zalan.do/v1"
+kind: postgresql
+metadata:
+  name: acid-minimal-cluster
+spec:
+  teamId: "acid"
+  volume:
+    size: 1Gi
+  numberOfInstances: 3  # One master and two replicas for HA
+  postgresql:
+    version: "15"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 500Mi

@@ -95,7 +95,7 @@ echo "Verifying inventory file contents:"
 cat "$INVENTORY_FILE"
 
 echo "Running Ansible playbook for Kubernetes deployment..."
-ansible-playbook -i "$INVENTORY_FILE" kubernetes/main.yml
+ansible-playbook -i "$INVENTORY_FILE" ansible/playbooks/kubernetes.yml
 
 echo "Kubernetes environment setup complete."
 echo "Control Plane: $CP_IP"

@@ -1,0 +1,65 @@
+---
+# ansible/tasks/kubernetes/deploy-localpath.yml
+# Deploy Rancher Local Path Provisioner to worker nodes
+
+- name: Create local-path directory on worker nodes
+  file:
+    path: /opt/local-path-provisioner
+    state: directory
+    mode: '0755'
+  delegate_to: "{{ item }}"
+  with_items: "{{ groups['workers'] }}"
+
+- name: Download Local Path Provisioner YAML
+  get_url:
+    url: https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+    dest: /tmp/local-path-storage.yaml
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: download_result
+
+- name: Apply Local Path Provisioner YAML
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f /tmp/local-path-storage.yaml
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: apply_result
+  changed_when: apply_result.rc == 0
+  failed_when: apply_result.rc != 0 and "already exists" not in apply_result.stderr
+
+- name: Wait for Local Path Provisioner to be ready
+  shell: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n local-path-storage wait
+    --for=condition=ready pod
+    --selector=app=local-path-provisioner
+    --timeout=60s
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: wait_result
+  changed_when: false
+  failed_when: false
+
+- name: Get Local Path Provisioner status
+  shell: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n local-path-storage get pod
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: status_result
+  changed_when: false
+
+- name: Display Local Path Provisioner status
+  debug:
+    msg: "{{ status_result.stdout_lines }}"
+
+- name: Verify StorageClass was created
+  shell: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get storageclass | grep local-path
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: sc_result
+  changed_when: false
+  failed_when: false
+
+- name: Set Local Path Provisioner as default StorageClass
+  shell: >
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf patch storageclass local-path
+    -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: default_sc_result
+  changed_when: default_sc_result.rc == 0
+  failed_when: false
+  when: sc_result.rc == 0

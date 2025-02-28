@@ -49,6 +49,17 @@
   tasks:
     - include_tasks: ../tasks/kubernetes/worker-join.yml
 
+- name: Deploy Rancher Local Path Provisioner
+  hosts: k8s_cluster
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - storage
+    - localpath
+  tasks:
+    - include_tasks: ../tasks/kubernetes/deploy-localpath.yml
+
 - name: Validate Kubernetes cluster
   hosts: k8s_cluster
   become: yes

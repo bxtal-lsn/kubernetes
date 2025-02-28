@@ -1,0 +1,88 @@
+---
+# ansible/tasks/kubernetes/debug-containerd.yml
+
+- name: Get containerd status
+  command: systemctl status containerd
+  register: containerd_status
+  failed_when: false
+  changed_when: false
+
+- name: Display containerd status
+  debug:
+    var: containerd_status.stdout_lines
+
+- name: Get containerd configuration
+  command: cat /etc/containerd/config.toml
+  register: containerd_config
+  changed_when: false
+
+- name: Display containerd configuration
+  debug:
+    var: containerd_config.stdout_lines
+
+- name: Fix containerd configuration directly
+  block:
+    - name: Create a minimal containerd configuration
+      copy:
+        content: |
+          version = 2
+          
+          [plugins]
+            [plugins."io.containerd.grpc.v1.cri"]
+              sandbox_image = "registry.k8s.io/pause:3.10"
+              [plugins."io.containerd.grpc.v1.cri".containerd]
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+                  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                    runtime_type = "io.containerd.runc.v2"
+                    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                      SystemdCgroup = true
+        dest: /etc/containerd/config.toml
+        owner: root
+        group: root
+        mode: '0644'
+      register: new_config
+
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+      when: new_config.changed
+
+- name: Pull the pause image manually
+  command: crictl pull registry.k8s.io/pause:3.10
+  register: pull_result
+  changed_when: pull_result.rc == 0
+  failed_when: false
+
+- name: Display pull result
+  debug:
+    var: pull_result.stdout_lines
+
+- name: Verify sandbox image
+  command: crictl images
+  register: images
+  changed_when: false
+
+- name: Display available images
+  debug:
+    var: images.stdout_lines
+
+- name: Reset kubeadm if needed
+  command: kubeadm reset -f
+  register: reset_result
+  changed_when: reset_result.rc == 0
+  failed_when: false
+
+- name: Display reset result
+  debug:
+    var: reset_result.stdout_lines
+
+- name: Clean up Kubernetes directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/kubernetes
+    - /var/lib/kubelet
+    - /var/lib/etcd
+  changed_when: false

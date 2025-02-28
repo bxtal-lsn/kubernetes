@@ -58,3 +58,13 @@
     - validate
   tasks:
     - include_tasks: ../tasks/kubernetes/validate-cluster.yml
+
+- name: Debug and fix containerd issues
+  hosts: control_plane
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags: 
+    - debug-containerd
+  tasks:
+    - include_tasks: ../tasks/kubernetes/debug-containerd.yml

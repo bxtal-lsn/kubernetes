@@ -1,5 +1,10 @@
 ---
 # ansible/tasks/kubernetes/install-containerd.yml
+- name: Ensure runc is installed (Debian/Ubuntu)
+  apt:
+    name: runc
+    state: present
+  when: ansible_os_family == "Debian"
 
 - name: Create work directory for containerd installation
   file:
@@ -61,16 +66,33 @@
     path: "{{ containerd_config_root }}/config.toml"
     regexp: 'SystemdCgroup = false'
     replace: 'SystemdCgroup = true'
-  when: config_written.changed
+  when: config_written.changed or containerd_binary.stat.exists
   notify: Restart containerd
 
 - name: Update containerd config for Kubernetes sandbox image
   lineinfile:
     path: "{{ containerd_config_root }}/config.toml"
-    regexp: '(\s*)sandbox_image = ".*"'
+    regexp: '(\s*)sandbox_image\s*=\s*".*"'
     line: '\1sandbox_image = "registry.k8s.io/pause:3.10"'
     backrefs: yes
-  when: config_written.changed
+  when: config_written.changed or containerd_binary.stat.exists
+  notify: Restart containerd
+
+- name: Ensure containerd config has sandbox_image set
+  lineinfile:
+    path: "{{ containerd_config_root }}/config.toml"
+    insertafter: '^\[plugins\."io\.containerd\.grpc\.v1\.cri"\]'
+    line: '  sandbox_image = "registry.k8s.io/pause:3.10"'
+    state: present
+  when: containerd_binary.stat.exists
+  notify: Restart containerd
+
+- name: Make sure CRI plugin is not disabled
+  replace:
+    path: "{{ containerd_config_root }}/config.toml"
+    regexp: 'disabled_plugins\s*=\s*\[\s*"cri"\s*\]'
+    replace: 'disabled_plugins = []'
+  when: containerd_binary.stat.exists
   notify: Restart containerd
 
 - name: Update containerd config for GRPC socket group (gid)
@@ -78,7 +100,7 @@
     path: "{{ containerd_config_root }}/config.toml"
     regexp: '^(\s*gid\s*=\s*)0'
     replace: '\g<1>{{ containerd_gid_cmd.stdout }}'
-  when: config_written.changed
+  when: config_written.changed or containerd_binary.stat.exists
   notify: Restart containerd
 
 - name: Create containerd systemd service file
@@ -121,6 +143,22 @@
     name: containerd
     enabled: yes
     state: started
+
+- name: Restart containerd immediately if needed
+  systemd:
+    name: containerd
+    state: restarted
+  when: containerd_binary.stat.exists
+
+- name: Configure crictl to use containerd
+  copy:
+    dest: /etc/crictl.yaml
+    content: |
+      runtime-endpoint: unix:///run/containerd/containerd.sock
+      image-endpoint: unix:///run/containerd/containerd.sock
+      timeout: 10
+      debug: false
+    mode: '0644'
 
 - name: Set permissions for containerd socket
   file:

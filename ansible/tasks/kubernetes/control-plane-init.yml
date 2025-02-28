@@ -76,12 +76,6 @@
   register: node_ready
   changed_when: false
 
-# - name: Remove taint from control plane node
-#   shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf taint nodes --all node-role.kubernetes.io/control-plane-
-#   register: taint_result
-#   changed_when: "'untainted' in taint_result.stdout"
-#   failed_when: false # This might fail if the taint doesn't exist, which is fine
-
 - name: Remove load balancer label from all nodes
   shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf label nodes --all node.kubernetes.io/exclude-from-external-load-balancers-
   register: label_result

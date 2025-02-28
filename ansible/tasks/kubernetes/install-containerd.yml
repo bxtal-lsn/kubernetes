@@ -64,6 +64,15 @@
   when: config_written.changed
   notify: Restart containerd
 
+- name: Update containerd config for Kubernetes sandbox image
+  lineinfile:
+    path: "{{ containerd_config_root }}/config.toml"
+    regexp: '(\s*)sandbox_image = ".*"'
+    line: '\1sandbox_image = "registry.k8s.io/pause:3.10"'
+    backrefs: yes
+  when: config_written.changed
+  notify: Restart containerd
+
 - name: Update containerd config for GRPC socket group (gid)
   replace:
     path: "{{ containerd_config_root }}/config.toml"

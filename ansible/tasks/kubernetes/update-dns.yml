@@ -5,11 +5,11 @@
     state: started
     enabled: yes
 
-- name: Configure systemd-resolved to use Google DNS
+- name: Configure systemd-resolved to use configurable DNS
   lineinfile:
     path: /etc/systemd/resolved.conf
     regexp: '^#?DNS='
-    line: 'DNS=8.8.8.8'
+    line: 'DNS={{ dns_servers | join(" ") }}'
     state: present
 
 - name: Restart systemd-resolved service

@@ -1,9 +1,9 @@
 ---
 # tasks/control-plane-init.yml
-- name: Set Kubernetes network CIDRs for Calico
+- name: Set Kubernetes network CIDRs
   set_fact:
-    pod_cidr: "192.168.0.0/16"  # Calico default CIDR
-    service_cidr: "10.96.0.0/16"
+    pod_cidr: "{{ pod_cidr }}"
+    service_cidr: "{{ service_cidr }}"
 
 - name: Initialize Kubernetes control plane
   command: >

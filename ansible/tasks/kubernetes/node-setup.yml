@@ -126,10 +126,7 @@
 
 - name: Install Kubernetes components
   apt:
-    name:
-      - kubelet
-      - kubeadm
-      - kubectl
+    name: "{{ kubernetes_packages }}"
     state: present
 
 - name: Hold Kubernetes packages

@@ -1,8 +1,9 @@
 ---
-# ansible/playbooks/kubernetes.yml
 - name: Common configuration for all nodes
   hosts: k8s_cluster
   become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
   tags: 
     - common
   tasks:
@@ -14,6 +15,8 @@
 - name: Kubernetes setup for all nodes
   hosts: k8s_cluster
   become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
   tags:
     - k8s-setup
   tasks:
@@ -22,6 +25,8 @@
 - name: Initialize Kubernetes control plane
   hosts: control_plane
   become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
   tags:
     - control-plane
   tasks:
@@ -30,11 +35,12 @@
 - name: Join worker nodes to cluster
   hosts: workers
   become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
   tags:
     - workers
   tasks:
     - include_tasks: ../tasks/kubernetes/worker-join.yml
-
 
 - name: Validate Kubernetes cluster
   hosts: k8s_cluster

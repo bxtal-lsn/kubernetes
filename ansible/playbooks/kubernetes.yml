@@ -34,3 +34,12 @@
     - workers
   tasks:
     - include_tasks: ../tasks/kubernetes/worker-join.yml
+
+
+- name: Validate Kubernetes cluster
+  hosts: k8s_cluster
+  become: yes
+  tags:
+    - validate
+  tasks:
+    - include_tasks: ../tasks/kubernetes/validate-cluster.yml

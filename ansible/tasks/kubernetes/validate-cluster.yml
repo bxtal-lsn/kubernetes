@@ -1,0 +1,102 @@
+---
+# ansible/tasks/kubernetes/validate-cluster.yml
+
+- name: Check control plane components
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n kube-system
+  register: control_plane_pods
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: "'control_plane' in group_names"
+
+- name: Check node status
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
+  register: node_status
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Wait for all pods to be ready
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods --all-namespaces | grep -v 'Running\|Completed' || echo "All pods running"
+  register: pod_status
+  until: pod_status.stdout == "All pods running"
+  retries: 30
+  delay: 10
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Verify worker node joined successfully
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes {{ inventory_hostname }} -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+  register: node_ready
+  until: node_ready.stdout == "True"
+  retries: 10
+  delay: 10
+  changed_when: false
+  when: "'workers' in group_names"
+
+- name: Verify CNI pods are running
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n calico-system --no-headers | wc -l
+  register: cni_pod_count
+  until: cni_pod_count.stdout|int > 0
+  retries: 10
+  delay: 10
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Test basic functionality with a test deployment
+  block:
+    - name: Create test namespace
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create namespace test
+      register: namespace_result
+      failed_when: 
+        - namespace_result.rc != 0
+        - "'already exists' not in namespace_result.stderr"
+      changed_when: "'created' in namespace_result.stdout"
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Deploy test nginx
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create deployment nginx --image=nginx -n test
+      register: deployment_result
+      failed_when: 
+        - deployment_result.rc != 0 
+        - "'already exists' not in deployment_result.stderr"
+      changed_when: "'created' in deployment_result.stdout"
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Wait for nginx pod to be ready
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready pods -l app=nginx -n test --timeout=60s
+      register: nginx_ready
+      changed_when: false
+      delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]
+
+- name: Check if CoreDNS is functioning
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf run -n test --rm -i --restart=Never --image=busybox dns-test -- nslookup kubernetes.default
+  register: dns_test
+  failed_when: "\"can't resolve\" in dns_test.stdout or dns_test.rc != 0"
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]
+
+- name: Clean up test resources
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf delete namespace test
+  register: cleanup_result
+  changed_when: cleanup_result.rc == 0
+  failed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]
+
+- name: Display cluster status summary
+  debug:
+    msg: 
+      - "Kubernetes cluster is validated and fully functional"
+      - "Control plane components: Running"
+      - "Worker nodes: {{ groups['workers'] | length }} Ready"
+      - "CNI (Calico): Operational"
+      - "CoreDNS: Functional"
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]

@@ -1,47 +1,68 @@
 #!/bin/bash
-# provision-postgres.sh - Creates and configures a PostgreSQL environment
+
+set -e  # Exit on error
 
 # Set variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common-lib.sh"
+
+# PostgreSQL VM Names
 PRIMARY_NAME="pg-primary"
 REPLICA1_NAME="pg-replica1"
 REPLICA2_NAME="pg-replica2"
 LB_NAME="pg-lb"
-SSH_KEY_FILE="$(pwd)/multipass/cloud-init/ssh_key.txt"
-CLOUD_INIT_TEMPLATE="$(pwd)/multipass/cloud-init/common.yaml"
-CLOUD_INIT_PROCESSED="$(pwd)/multipass/cloud-init/common_processed.yaml"
-INVENTORY_FILE="$(pwd)/ansible/inventories/postgres.yml"
 
-# Check if any VMs already exist
-VM_EXISTS=false
-if multipass info $PRIMARY_NAME &>/dev/null || \
-   multipass info $REPLICA1_NAME &>/dev/null || \
-   multipass info $REPLICA2_NAME &>/dev/null || \
-   multipass info $LB_NAME &>/dev/null; then
-   VM_EXISTS=true
-fi
+# SSH Key paths
+SSH_KEY_NAME="id_rsa_provisioning"
+SSH_KEY_PATH="$HOME/.ssh/$SSH_KEY_NAME"
+SSH_PUB_KEY_PATH="$SSH_KEY_PATH.pub"
 
-if [ "$VM_EXISTS" = true ]; then
-    echo "Some PostgreSQL VMs already exist, proceeding to Ansible configuration..."
-else
-    # Verify SSH key file exists
-    if [ ! -f "$SSH_KEY_FILE" ]; then
-        echo "Error: SSH key file not found at $SSH_KEY_FILE"
-        echo "Please create this file with your public SSH key."
-        exit 1
-    fi
+# Cloud-init and inventory paths
+CLOUD_INIT_TEMPLATE="$SCRIPT_DIR/../multipass/cloud-init/common.yaml"
+CLOUD_INIT_PROCESSED="$SCRIPT_DIR/../multipass/cloud-init/common_processed.yaml"
+INVENTORY_FILE="$SCRIPT_DIR/../ansible/inventories/postgres.yml"
 
-    # Read SSH key
-    SSH_KEY=$(cat "$SSH_KEY_FILE")
+# Check dependencies
+check_dependencies || exit 1
 
-    # Process the cloud-init template and replace the placeholder
-    sed "s|\$SSH_PUBLIC_KEY|$SSH_KEY|g" "$CLOUD_INIT_TEMPLATE" > "$CLOUD_INIT_PROCESSED"
+# Ensure SSH key exists
+ensure_ssh_key "$SSH_KEY_PATH" || exit 1
 
+# Process cloud-init template
+prepare_cloud_init "$CLOUD_INIT_TEMPLATE" "$CLOUD_INIT_PROCESSED" "$SSH_PUB_KEY_PATH" || exit 1
+
+# Check if VMs already exist
+PRIMARY_EXISTS=$(check_vm_exists "$PRIMARY_NAME" && echo "true" || echo "false")
+REPLICA1_EXISTS=$(check_vm_exists "$REPLICA1_NAME" && echo "true" || echo "false")
+REPLICA2_EXISTS=$(check_vm_exists "$REPLICA2_NAME" && echo "true" || echo "false")
+LB_EXISTS=$(check_vm_exists "$LB_NAME" && echo "true" || echo "false")
+
+# Create VMs if they don't exist
+if [[ "$PRIMARY_EXISTS" == "false" || "$REPLICA1_EXISTS" == "false" || 
+      "$REPLICA2_EXISTS" == "false" || "$LB_EXISTS" == "false" ]]; then
     echo "Creating PostgreSQL VMs with Multipass..."
-    multipass launch --name $PRIMARY_NAME --cpus 1 --mem 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
-    multipass launch --name $REPLICA1_NAME --cpus 1 --mem 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
-    multipass launch --name $REPLICA2_NAME --cpus 1 --mem 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
-    multipass launch --name $LB_NAME --cpus 1 --mem 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
-
+    
+    # Create VMs that don't exist
+    if [[ "$PRIMARY_EXISTS" == "false" ]]; then
+        echo "Creating VM: $PRIMARY_NAME (1 CPU, 1G memory, 5G disk)"
+        multipass launch --name "$PRIMARY_NAME" --cpus 1 --memory 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
+    fi
+    
+    if [[ "$REPLICA1_EXISTS" == "false" ]]; then
+        echo "Creating VM: $REPLICA1_NAME (1 CPU, 1G memory, 5G disk)"
+        multipass launch --name "$REPLICA1_NAME" --cpus 1 --memory 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
+    fi
+    
+    if [[ "$REPLICA2_EXISTS" == "false" ]]; then
+        echo "Creating VM: $REPLICA2_NAME (1 CPU, 1G memory, 5G disk)"
+        multipass launch --name "$REPLICA2_NAME" --cpus 1 --memory 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
+    fi
+    
+    if [[ "$LB_EXISTS" == "false" ]]; then
+        echo "Creating VM: $LB_NAME (1 CPU, 1G memory, 5G disk)"
+        multipass launch --name "$LB_NAME" --cpus 1 --memory 1G --disk 5G --cloud-init "$CLOUD_INIT_PROCESSED"
+    fi
+    
     # Remove processed file after use
     rm "$CLOUD_INIT_PROCESSED"
     
@@ -51,11 +72,11 @@ else
 fi
 
 echo "Extracting IP addresses..."
-# Extract IPs correctly
-PRIMARY_IP=$(multipass info pg-primary | grep "IPv4" | head -n 1 | awk '{print $2}')
-REPLICA1_IP=$(multipass info pg-replica1 | grep "IPv4" | head -n 1 | awk '{print $2}')
-REPLICA2_IP=$(multipass info pg-replica2 | grep "IPv4" | head -n 1 | awk '{print $2}')
-LB_IP=$(multipass info pg-lb | grep "IPv4" | head -n 1 | awk '{print $2}')
+# Extract IPs
+PRIMARY_IP=$(get_vm_ip "$PRIMARY_NAME") || exit 1
+REPLICA1_IP=$(get_vm_ip "$REPLICA1_NAME") || exit 1
+REPLICA2_IP=$(get_vm_ip "$REPLICA2_NAME") || exit 1
+LB_IP=$(get_vm_ip "$LB_NAME") || exit 1
 
 # Print the IPs to verify
 echo "Primary IP: $PRIMARY_IP"
@@ -64,7 +85,10 @@ echo "Replica2 IP: $REPLICA2_IP"
 echo "Load Balancer IP: $LB_IP"
 
 echo "Generating Ansible inventory..."
-# Create inventory file - using a simpler format to avoid issues
+# Create directory for inventory file if it doesn't exist
+mkdir -p "$(dirname "$INVENTORY_FILE")"
+
+# Create inventory file
 cat > "$INVENTORY_FILE" << EOF
 [postgres_primary]
 pg-primary ansible_host=$PRIMARY_IP
@@ -83,18 +107,32 @@ postgres_lb
 
 [all:vars]
 ansible_user=ubuntu
-ansible_ssh_private_key_file=~/.ssh/id_rsa
+ansible_ssh_private_key_file=$SSH_KEY_PATH
 ansible_python_interpreter=/usr/bin/python3
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 EOF
 
+echo -e "${GREEN}✓${NC} Ansible inventory created at $INVENTORY_FILE"
+
+# Verify inventory
 echo "Verifying inventory file contents:"
 cat "$INVENTORY_FILE"
 
-echo "Running Ansible playbook..."
-ansible-playbook -i "$INVENTORY_FILE" ansible/playbooks/postgres.yml
+# Run Ansible playbook
+PLAYBOOK="$SCRIPT_DIR/../ansible/playbooks/postgres.yml"
+if [ ! -f "$PLAYBOOK" ]; then
+    echo -e "${RED}✗ Error:${NC} Ansible playbook not found at $PLAYBOOK"
+    exit 1
+fi
 
-echo "PostgreSQL environment is ready!"
+echo "Running Ansible playbook..."
+if ansible-playbook -i "$INVENTORY_FILE" "$PLAYBOOK"; then
+    echo -e "${GREEN}✓${NC} Ansible playbook completed successfully"
+else
+    echo -e "${RED}✗ Error:${NC} Ansible playbook failed"
+    exit 1
+fi
+
+echo -e "${GREEN}✓${NC} PostgreSQL environment is ready!"
 echo "Primary: $PRIMARY_IP"
 echo "Replicas: $REPLICA1_IP, $REPLICA2_IP"
-echo "Load Balancer: $LB_IP"

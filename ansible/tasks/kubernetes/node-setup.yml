@@ -13,9 +13,82 @@
       - gnupg
     state: present
 
-# Install containerd directly from GitHub release
-- name: Install containerd directly from release
-  include_tasks: install-containerd.yml
+# Add Docker GPG key
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Install containerd from Docker repository
+  apt:
+    name: containerd.io
+    state: present
+    update_cache: yes
+
+- name: Create containerd directory
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Check if containerd config command works
+  command: which containerd
+  register: containerd_check
+  changed_when: false
+  failed_when: false
+
+- name: Generate default containerd config (if containerd exists)
+  command: containerd config default
+  register: containerd_config
+  changed_when: false
+  when: containerd_check.rc == 0
+
+- name: Create a basic containerd config (if command failed)
+  copy:
+    content: |
+      version = 2
+      
+      [plugins]
+        [plugins."io.containerd.grpc.v1.cri"]
+          [plugins."io.containerd.grpc.v1.cri".containerd]
+            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                runtime_type = "io.containerd.runc.v2"
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                  SystemdCgroup = true
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  when: containerd_check.rc != 0
+
+- name: Write containerd config from generated output
+  copy:
+    content: "{{ containerd_config.stdout }}"
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  when: containerd_check.rc == 0 and containerd_config.stdout is defined and containerd_config.stdout != ""
+
+- name: Enable SystemdCgroup in containerd config
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  when: containerd_check.rc == 0
+
+- name: Restart containerd
+  systemd:
+    name: containerd
+    state: restarted
+    enabled: yes
 
 # Continue with Kubernetes repository setup and installation
 - name: Get latest Kubernetes version

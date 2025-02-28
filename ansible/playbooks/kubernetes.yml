@@ -1,4 +1,5 @@
 ---
+# ansible/playbooks/kubernetes.yml
 - name: Common configuration for all nodes
   hosts: k8s_cluster
   become: yes
@@ -21,6 +22,12 @@
     - k8s-setup
   tasks:
     - include_tasks: ../tasks/kubernetes/node-setup.yml
+  handlers:
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
 
 - name: Initialize Kubernetes control plane
   hosts: control_plane
@@ -45,6 +52,8 @@
 - name: Validate Kubernetes cluster
   hosts: k8s_cluster
   become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
   tags:
     - validate
   tasks:

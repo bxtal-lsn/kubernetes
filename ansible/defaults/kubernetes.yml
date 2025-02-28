@@ -1,6 +1,6 @@
 ---
 # Kubernetes configuration
-kubernetes_version: "1.32"
+kubernetes_version: "1.28"
 pod_cidr: "192.168.0.0/16"
 service_cidr: "10.96.0.0/16"
 
@@ -20,3 +20,20 @@ worker_disk: 20G
 dns_servers:
   - "8.8.8.8"
   - "8.8.4.4"
+
+# Kubernetes packages
+kubernetes_packages:
+  - kubelet
+  - kubeadm
+  - kubectl
+
+# Containerd configuration
+containerd_version: "2.0.0"
+containerd_arch: "amd64"
+containerd_checksum: "sha256:6f8da716941f7e89315cefaa6e5a8f1ff10b323ff46611313c455df7ab1ebee1"
+containerd_work_dir: "/tmp/containerd-install"
+containerd_install_root: "/usr/local"
+containerd_config_root: "/etc/containerd"
+containerd_systemd_root: "/etc/systemd/system"
+containerd_binary_path: "{{ containerd_install_root }}/bin"
+containerd_group: "containerd"

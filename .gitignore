@@ -1,3 +1,22 @@
 multipass/cloud-init/ssh_key.txt
 multipass/cloud-init/common_processed.yaml
 ansible/inventories/kubernetes.yml
+
+
+# Go build artifacts (except for released binaries)
+/build/
+/bin/
+# Uncomment the lines above if you don't want to include binaries in the repo
+
+# Go dependency directories
+/vendor/
+
+# Go test cache
+*.test
+*.out
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo

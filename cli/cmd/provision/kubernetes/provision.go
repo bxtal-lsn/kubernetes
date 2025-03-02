@@ -34,7 +34,9 @@ func LoadDefaultConfig() (*Config, error) {
 
 	data, err := os.ReadFile(defaultsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read defaults file: %w", err)
+		return nil, fmt.Errorf("Could not find configuration file. Please run this command from the 'cli' directory of the project repository. "+
+			"Make sure you are in the correct directory and the file exists at: %s",
+			defaultsPath)
 	}
 
 	config := &Config{}

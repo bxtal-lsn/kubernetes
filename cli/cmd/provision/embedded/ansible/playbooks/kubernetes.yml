@@ -1,0 +1,71 @@
+---
+# ansible/playbooks/kubernetes.yml
+- name: Common configuration for all nodes
+  hosts: k8s_cluster
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags: 
+    - common
+  tasks:
+    - include_tasks: ../tasks/kubernetes/setup-hosts.yml
+    - include_tasks: ../tasks/kubernetes/update-dns.yml
+    - include_tasks: ../tasks/kubernetes/ssh.yml
+    - include_tasks: ../tasks/kubernetes/setup-kernel.yml
+      
+- name: Kubernetes setup for all nodes
+  hosts: k8s_cluster
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - k8s-setup
+  tasks:
+    - include_tasks: ../tasks/kubernetes/node-setup.yml
+  handlers:
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+
+- name: Initialize Kubernetes control plane
+  hosts: control_plane
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - control-plane
+  tasks:
+    - include_tasks: ../tasks/kubernetes/control-plane-init.yml
+
+- name: Join worker nodes to cluster
+  hosts: workers
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - workers
+  tasks:
+    - include_tasks: ../tasks/kubernetes/worker-join.yml
+
+- name: Deploy Rancher Local Path Provisioner
+  hosts: k8s_cluster
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - storage
+    - localpath
+  tasks:
+    - include_tasks: ../tasks/kubernetes/deploy-localpath.yml
+
+- name: Validate Kubernetes cluster
+  hosts: k8s_cluster
+  become: yes
+  vars_files:
+    - ../defaults/kubernetes.yml
+  tags:
+    - validate
+  tasks:
+    - include_tasks: ../tasks/kubernetes/validate-cluster.yml

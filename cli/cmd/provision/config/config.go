@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/embedded"
 )
 
 var (
@@ -12,14 +14,6 @@ var (
 	repoRootOnce  sync.Once
 	repoRootErr   error
 )
-
-// GetRepoRoot returns the repository root path, caching the result after the first call
-func GetRepoRoot() (string, error) {
-	repoRootOnce.Do(func() {
-		repoRootCache, repoRootErr = findRepoRoot()
-	})
-	return repoRootCache, repoRootErr
-}
 
 // findRepoRoot attempts to find the repository root by looking for marker files/directories
 // Update this function in cli/cmd/provision/config/config.go
@@ -100,20 +94,23 @@ func fileExists(path string) bool {
 	return !info.IsDir()
 }
 
+// GetRepoRoot is no longer needed as we use embedded files
+// but kept for backward compatibility
+func GetRepoRoot() (string, error) {
+	return embedded.TempDir, nil
+}
+
 // GetAnsiblePath returns the absolute path to an ansible resource
 func GetAnsiblePath(resourcePath string) (string, error) {
-	repoRoot, err := GetRepoRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(repoRoot, "ansible", resourcePath), nil
+	return embedded.GetAnsiblePath(resourcePath), nil
 }
 
 // GetScriptsPath returns the absolute path to a script
 func GetScriptsPath(scriptName string) (string, error) {
-	repoRoot, err := GetRepoRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(repoRoot, "scripts", scriptName), nil
+	return embedded.GetScriptPath(scriptName), nil
+}
+
+// GetCloudInitPath returns the absolute path to a cloud-init template
+func GetCloudInitPath(templateName string) (string, error) {
+	return embedded.GetCloudInitPath(templateName), nil
 }

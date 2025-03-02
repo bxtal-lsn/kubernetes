@@ -1,0 +1,28 @@
+---
+# Kubernetes configuration
+kubernetes_version: "1.32"
+pod_cidr: "192.168.0.0/16"
+service_cidr: "10.96.0.0/16"
+
+# CNI plugin choice (options: calico, flannel, etc.)
+cni_plugin: "calico"
+calico_version: "v3.29.1"
+
+# Node resources
+control_plane_cpus: 4
+control_plane_memory: 8G
+control_plane_disk: 40G
+worker_cpus: 4
+worker_memory: 8G
+worker_disk: 40G
+
+# DNS configuration
+dns_servers:
+  - "8.8.8.8"
+  - "8.8.4.4"
+
+# Kubernetes packages
+kubernetes_packages:
+  - kubelet
+  - kubeadm
+  - kubectl

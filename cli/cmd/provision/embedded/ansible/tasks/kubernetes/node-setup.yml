@@ -1,0 +1,167 @@
+---
+# tasks/kubernetes/node-setup.yml
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install apt transport packages
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+
+# Add Docker GPG key
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Install containerd from Docker repository
+  apt:
+    name: containerd.io
+    state: present
+    update_cache: yes
+
+- name: Create containerd directory
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Check if containerd config command works
+  command: which containerd
+  register: containerd_check
+  changed_when: false
+  failed_when: false
+
+- name: Generate default containerd config (if containerd exists)
+  command: containerd config default
+  register: containerd_config
+  changed_when: false
+  when: containerd_check.rc == 0
+
+- name: Create a basic containerd config (if command failed)
+  copy:
+    content: |
+      version = 2
+      
+      [plugins]
+        [plugins."io.containerd.grpc.v1.cri"]
+          [plugins."io.containerd.grpc.v1.cri".containerd]
+            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes]
+              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                runtime_type = "io.containerd.runc.v2"
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                  SystemdCgroup = true
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  when: containerd_check.rc != 0
+
+- name: Write containerd config from generated output
+  copy:
+    content: "{{ containerd_config.stdout }}"
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  when: containerd_check.rc == 0 and containerd_config.stdout is defined and containerd_config.stdout != ""
+
+- name: Enable SystemdCgroup in containerd config
+  replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+  when: containerd_check.rc == 0
+
+- name: Restart containerd
+  systemd:
+    name: containerd
+    state: restarted
+    enabled: yes
+
+# Continue with Kubernetes repository setup and installation
+- name: Get latest Kubernetes version
+  shell: curl -L -s https://dl.k8s.io/release/stable.txt | awk 'BEGIN { FS="." } { printf "%s.%s", $1, $2 }'
+  register: kube_latest
+  changed_when: false
+
+- name: Create keyrings directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Download Kubernetes apt key
+  get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ kube_latest.stdout }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: '0644'
+
+- name: Add Kubernetes apt key
+  shell: cat /tmp/kubernetes-release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+- name: Add Kubernetes apt repository
+  copy:
+    content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kube_latest.stdout }}/deb/ /"
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install Kubernetes components
+  apt:
+    name: "{{ kubernetes_packages }}"
+    state: present
+
+- name: Hold Kubernetes packages
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+
+- name: Check if crictl is installed
+  command: which crictl
+  register: crictl_check
+  changed_when: false
+  failed_when: false
+
+- name: Configure crictl
+  shell: |
+    crictl config \
+      --set runtime-endpoint=unix:///run/containerd/containerd.sock \
+      --set image-endpoint=unix:///run/containerd/containerd.sock
+  changed_when: false
+  when: crictl_check.rc == 0
+
+- name: Get primary network interface IP
+  shell: ip -4 addr show {{ ansible_default_ipv4.interface }} | grep "inet" | head -1 | awk '{print $2}' | cut -d/ -f1
+  register: node_ip
+  changed_when: false
+
+- name: Configure kubelet node IP
+  copy:
+    content: "KUBELET_EXTRA_ARGS='--node-ip {{ node_ip.stdout }}'"
+    dest: /etc/default/kubelet
+    owner: root
+    group: root
+    mode: '0644'

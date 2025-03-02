@@ -1,0 +1,116 @@
+---
+# ansible/tasks/kubernetes/validate-cluster.yml
+
+- name: Check node status
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
+  register: node_status
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Display node status
+  debug:
+    var: node_status.stdout_lines
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Check all pods status
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods --all-namespaces
+  register: all_pods
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Display all pods status
+  debug:
+    var: all_pods.stdout_lines
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Count pods not in Running or Completed state
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods --all-namespaces | grep -v "Running\|Completed" | grep -v "NAME" | wc -l
+  register: non_running_pods
+  changed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Display non-running pods count
+  debug:
+    var: non_running_pods.stdout
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Verify all pods are ready
+  debug:
+    msg: "All pods are in Running or Completed state"
+  when: non_running_pods.stdout|int == 0
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Display problematic pods if any
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods --all-namespaces | grep -v "Running\|Completed" | grep -v "NAME"
+  register: problem_pods
+  when: non_running_pods.stdout|int > 0
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+- name: Show problematic pods
+  debug:
+    var: problem_pods.stdout_lines
+  when: non_running_pods.stdout|int > 0
+  delegate_to: "{{ groups['control_plane'][0] }}"
+
+# Simplified test deployment - with more debugging
+- name: Test basic functionality with a simple deployment
+  block:
+    - name: Create test namespace
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create namespace test
+      register: namespace_result
+      failed_when: false
+      changed_when: "'created' in namespace_result.stdout"
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Display namespace creation result
+      debug:
+        var: namespace_result
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Deploy test nginx
+      shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create deployment nginx --image=nginx -n test
+      register: deployment_result
+      failed_when: false
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Display deployment result
+      debug:
+        var: deployment_result
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Wait for nginx pod (non-blocking)
+      shell: |
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n test -l app=nginx -o wide
+      register: nginx_status
+      changed_when: false
+      failed_when: false
+      delegate_to: "{{ groups['control_plane'][0] }}"
+
+    - name: Display nginx pod status
+      debug:
+        var: nginx_status.stdout_lines
+      delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]
+
+- name: Clean up test resources
+  shell: |
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf delete namespace test
+  register: cleanup_result
+  changed_when: cleanup_result.rc == 0
+  failed_when: false
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]
+
+- name: Display cluster status summary
+  debug:
+    msg: 
+      - "Kubernetes cluster validation summary:"
+      - "Control plane: Available"
+      - "Worker nodes: {{ groups['workers'] | length }} nodes"
+      - "All pods: {{ 'Ready' if non_running_pods.stdout|int == 0 else 'Some pods not ready' }}"
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  when: inventory_hostname == groups['control_plane'][0]

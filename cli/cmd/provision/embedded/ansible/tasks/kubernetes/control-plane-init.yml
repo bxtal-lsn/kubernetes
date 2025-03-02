@@ -1,0 +1,92 @@
+---
+# tasks/control-plane-init.yml
+- name: Set Kubernetes network CIDRs
+  set_fact:
+    pod_cidr: "{{ pod_cidr }}"
+    service_cidr: "{{ service_cidr }}"
+
+- name: Initialize Kubernetes control plane
+  command: >
+    kubeadm init 
+    --pod-network-cidr={{ pod_cidr }} 
+    --service-cidr={{ service_cidr }}
+    --apiserver-advertise-address={{ ansible_default_ipv4.address }}
+  register: kubeadm_init
+  args:
+    creates: /etc/kubernetes/admin.conf
+
+- name: Create .kube directory for current user
+  file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Copy Kubernetes admin.conf to user's .kube/config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: yes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0644'
+
+- name: Install Calico Operator
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.1/manifests/tigera-operator.yaml
+  register: calico_operator_result
+  changed_when: "'created' in calico_operator_result.stdout"
+  failed_when: 
+    - calico_operator_result.rc != 0
+    - "'already exists' not in calico_operator_result.stderr"
+
+- name: Install Calico Custom Resources
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf create -f https://raw.githubusercontent.com/projectcalico/calico/v3.29.1/manifests/custom-resources.yaml
+  register: calico_resources_result
+  changed_when: "'created' in calico_resources_result.stdout"
+  failed_when: 
+    - calico_resources_result.rc != 0
+    - "'already exists' not in calico_resources_result.stderr"
+
+- name: Wait for calico-system namespace to be created
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf get namespace | grep calico-system
+  register: calico_ns
+  until: calico_ns.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Wait for Calico pods to be ready
+  shell: |
+    # Give pods some time to be created
+    sleep 30
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf -n calico-system wait --for=condition=ready pods --all --timeout=300s
+  register: calico_pods_ready
+  changed_when: false
+  failed_when: false  # Don't fail if timeout occurs, we'll verify the node status later
+
+- name: Wait for CoreDNS to be ready
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf -n kube-system wait --for=condition=ready pods -l k8s-app=kube-dns --timeout=120s
+  register: coredns_ready
+  changed_when: false
+  failed_when: false
+
+- name: Wait for node to be ready
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf wait --for=condition=ready nodes --all --timeout=120s
+  register: node_ready
+  changed_when: false
+
+- name: Remove load balancer label from all nodes
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf label nodes --all node.kubernetes.io/exclude-from-external-load-balancers-
+  register: label_result
+  changed_when: "'labeled' in label_result.stdout"
+  failed_when: false # This might fail if the label doesn't exist, which is fine
+
+- name: Get join command
+  command: kubeadm token create --print-join-command
+  register: join_command
+  changed_when: false
+
+- name: Store join command
+  set_fact:
+    join_command: "{{ join_command.stdout }}"

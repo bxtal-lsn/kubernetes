@@ -1,0 +1,18 @@
+---
+# tasks/ssh.yml
+- name: Enable password authentication in sshd_config
+  replace:
+    path: /etc/ssh/sshd_config
+    regexp: '#PasswordAuthentication'
+    replace: 'PasswordAuthentication'
+
+- name: Enable KbdInteractiveAuthentication in sshd_config
+  replace:
+    path: /etc/ssh/sshd_config
+    regexp: 'KbdInteractiveAuthentication no'
+    replace: 'KbdInteractiveAuthentication yes'
+
+- name: Restart SSH service
+  systemd:
+    name: ssh
+    state: restarted

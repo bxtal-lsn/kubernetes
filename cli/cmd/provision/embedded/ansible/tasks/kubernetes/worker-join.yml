@@ -1,0 +1,13 @@
+---
+# tasks/worker-join.yml
+- name: Get join command from control plane
+  delegate_to: controlplane
+  command: kubeadm token create --print-join-command
+  register: join_command_result
+  changed_when: false
+  run_once: true
+
+- name: Join worker node to the cluster
+  command: "{{ join_command_result.stdout }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf

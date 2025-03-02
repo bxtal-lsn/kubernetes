@@ -208,19 +208,29 @@ func ProvisionInteractive() error {
 
 // runProvisionScript runs the actual Kubernetes provisioning
 func runProvisionScript(configPath string) error {
-	// Run the ansible playbook with custom variables
+	// Path to the shell script for Kubernetes provisioning
+	provisionScriptPath := "../../../scripts/provision-kubernetes.sh"
+
+	// Check if script exists
+	if _, err := os.Stat(provisionScriptPath); os.IsNotExist(err) {
+		return fmt.Errorf("provision script does not exist: %s", provisionScriptPath)
+	}
+
+	// Run the provision script
+	cmd := exec.Command(provisionScriptPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	// Execute the provision script which handles Multipass VM creation
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run provision script: %w", err)
+	}
+
+	// Continue with Ansible playbook
 	inventory := "../../../ansible/inventories/kubernetes.yml"
 	playbook := "../../../ansible/playbooks/kubernetes.yml"
 
-	// Check if files exist
-	if _, err := os.Stat(inventory); os.IsNotExist(err) {
-		return fmt.Errorf("inventory file does not exist: %s", inventory)
-	}
-	if _, err := os.Stat(playbook); os.IsNotExist(err) {
-		return fmt.Errorf("playbook file does not exist: %s", playbook)
-	}
-
-	// Run ansible-playbook
 	return ansible.RunPlaybook(playbook, inventory, []string{"-e", "@" + configPath})
 }
 

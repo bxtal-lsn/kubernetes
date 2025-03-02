@@ -80,11 +80,3 @@ If you encounter issues:
 2. Verify VM status with `multipass list`
 3. Ensure all prerequisites are properly installed
 4. For Kubernetes-specific issues, shell into the control plane and use `kubectl` to investigate
-
-## License
-
-[License details go here]
-
-## Contributing
-
-[Contributing guidelines go here]

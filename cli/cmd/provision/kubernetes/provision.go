@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/ansible"
+	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/config"
 	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/interactive"
 	"gopkg.in/yaml.v3"
 )
@@ -30,13 +31,14 @@ type Config struct {
 
 // LoadDefaultConfig loads the default Kubernetes configuration from the defaults file
 func LoadDefaultConfig() (*Config, error) {
-	defaultsPath := "../../../ansible/defaults/kubernetes.yml"
+	defaultsPath, err := config.GetAnsiblePath("defaults/kubernetes.yml")
+	if err != nil {
+		return nil, fmt.Errorf("failed to locate defaults file: %w", err)
+	}
 
 	data, err := os.ReadFile(defaultsPath)
 	if err != nil {
-		return nil, fmt.Errorf("Could not find configuration file. Please run this command from the 'cli' directory of the project repository. "+
-			"Make sure you are in the correct directory and the file exists at: %s",
-			defaultsPath)
+		return nil, fmt.Errorf("failed to read defaults file: %w", err)
 	}
 
 	config := &Config{}
@@ -210,35 +212,36 @@ func ProvisionInteractive() error {
 
 // runProvisionScript runs the actual Kubernetes provisioning
 func runProvisionScript(configPath string) error {
-	// Path to the shell script for Kubernetes provisioning
-	provisionScriptPath := "../../../scripts/provision-kubernetes.sh"
-
-	// Check if script exists
-	if _, err := os.Stat(provisionScriptPath); os.IsNotExist(err) {
-		return fmt.Errorf("provision script does not exist: %s", provisionScriptPath)
+	// Get repository paths for inventory and playbook
+	inventory, err := config.GetAnsiblePath("inventories/kubernetes.yml")
+	if err != nil {
+		return fmt.Errorf("failed to locate inventory file: %w", err)
 	}
 
-	// Run the provision script
-	cmd := exec.Command(provisionScriptPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-
-	// Execute the provision script which handles Multipass VM creation
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run provision script: %w", err)
+	playbook, err := config.GetAnsiblePath("playbooks/kubernetes.yml")
+	if err != nil {
+		return fmt.Errorf("failed to locate playbook file: %w", err)
 	}
 
-	// Continue with Ansible playbook
-	inventory := "../../../ansible/inventories/kubernetes.yml"
-	playbook := "../../../ansible/playbooks/kubernetes.yml"
+	// Check if files exist
+	if _, err := os.Stat(inventory); os.IsNotExist(err) {
+		return fmt.Errorf("inventory file does not exist: %s", inventory)
+	}
+	if _, err := os.Stat(playbook); os.IsNotExist(err) {
+		return fmt.Errorf("playbook file does not exist: %s", playbook)
+	}
 
+	// Run ansible-playbook
 	return ansible.RunPlaybook(playbook, inventory, []string{"-e", "@" + configPath})
 }
 
 // Cleanup handles Kubernetes cluster cleanup
 func Cleanup() error {
-	scriptPath := "../../../scripts/cleanup-kubernetes.sh"
+	// Get path to cleanup script
+	scriptPath, err := config.GetScriptsPath("cleanup-kubernetes.sh")
+	if err != nil {
+		return fmt.Errorf("failed to locate cleanup script: %w", err)
+	}
 
 	// Check if script exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
@@ -253,3 +256,4 @@ func Cleanup() error {
 
 	return cmd.Run()
 }
+

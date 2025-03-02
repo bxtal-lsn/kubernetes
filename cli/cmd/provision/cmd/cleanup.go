@@ -40,9 +40,11 @@ func cleanupInteractive() {
 		if err := kubernetes.Cleanup(); err != nil {
 			exitWithError("Failed to clean up Kubernetes cluster", err)
 		}
+		fmt.Println("Kubernetes cluster cleanup completed successfully")
+	case "PostgreSQL Cluster":
+		fmt.Println("PostgreSQL cluster cleanup is not implemented yet")
 	default:
 		fmt.Println("Invalid choice")
 	}
-
-	fmt.Println("Cleanup completed successfully")
 }
+

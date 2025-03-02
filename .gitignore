@@ -6,6 +6,7 @@ ansible/inventories/kubernetes.yml
 # Go build artifacts (except for released binaries)
 /build/
 /bin/
+cli/bin
 # Uncomment the lines above if you don't want to include binaries in the repo
 
 # Go dependency directories

@@ -37,6 +37,10 @@ The CLI tool provides a user-friendly interface for managing your environments:
 # Install CLI tool
 ./cli/install.sh
 
+# The installer adds the binary to ~/.local/bin
+# Make sure this is in your PATH
+export PATH="$PATH:$HOME/.local/bin"
+
 # Run the tool
 provision
 ```

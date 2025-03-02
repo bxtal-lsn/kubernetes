@@ -10,18 +10,27 @@ A user-friendly CLI tool for provisioning and managing infrastructure components
 
 ```bash
 ./install.sh
+
+# Make sure ~/.local/bin is in your PATH
+export PATH="$PATH:$HOME/.local/bin"
 ```
 
-This installs the CLI tool to `~/.local/bin` and provides PATH configuration instructions if needed.
+This installs the CLI tool to `~/.local/bin`. You may need to add this directory to your PATH if it's not already there. To make this change permanent, add the export line to your `~/.bashrc` or `~/.profile`.
 
 ### Manual Install
 
 Find the appropriate binary for your platform in the `bin` directory:
 
 ```bash
+# Create ~/.local/bin directory if it doesn't exist
+mkdir -p ~/.local/bin
+
 # Example for Linux/AMD64
 cp bin/linux_amd64/provision ~/.local/bin/
 chmod +x ~/.local/bin/provision
+
+# Add to PATH if needed
+export PATH="$PATH:$HOME/.local/bin"
 ```
 
 Available binaries:

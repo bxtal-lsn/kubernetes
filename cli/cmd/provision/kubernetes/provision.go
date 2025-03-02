@@ -33,12 +33,14 @@ type Config struct {
 func LoadDefaultConfig() (*Config, error) {
 	defaultsPath, err := config.GetAnsiblePath("defaults/kubernetes.yml")
 	if err != nil {
-		return nil, fmt.Errorf("failed to locate defaults file: %w", err)
+		return nil, fmt.Errorf("failed to locate defaults file: %w\n"+
+			"Please make sure you are running the command from within the repository and that the ansible/defaults/kubernetes.yml file exists", err)
 	}
 
 	data, err := os.ReadFile(defaultsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read defaults file: %w", err)
+		return nil, fmt.Errorf("failed to read defaults file at %s: %w\n"+
+			"Please check file permissions and that the repository is correctly cloned", defaultsPath, err)
 	}
 
 	config := &Config{}
@@ -256,4 +258,3 @@ func Cleanup() error {
 
 	return cmd.Run()
 }
-

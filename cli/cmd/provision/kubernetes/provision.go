@@ -30,7 +30,7 @@ type Config struct {
 
 // LoadDefaultConfig loads the default Kubernetes configuration from the defaults file
 func LoadDefaultConfig() (*Config, error) {
-	defaultsPath := "ansible/defaults/kubernetes.yml"
+	defaultsPath := "../../../ansible/defaults/kubernetes.yml"
 
 	data, err := os.ReadFile(defaultsPath)
 	if err != nil {
@@ -209,8 +209,8 @@ func ProvisionInteractive() error {
 // runProvisionScript runs the actual Kubernetes provisioning
 func runProvisionScript(configPath string) error {
 	// Run the ansible playbook with custom variables
-	inventory := "ansible/inventories/kubernetes.yml"
-	playbook := "ansible/playbooks/kubernetes.yml"
+	inventory := "../../../ansible/inventories/kubernetes.yml"
+	playbook := "../../../ansible/playbooks/kubernetes.yml"
 
 	// Check if files exist
 	if _, err := os.Stat(inventory); os.IsNotExist(err) {
@@ -226,7 +226,7 @@ func runProvisionScript(configPath string) error {
 
 // Cleanup handles Kubernetes cluster cleanup
 func Cleanup() error {
-	scriptPath := "scripts/cleanup-kubernetes.sh"
+	scriptPath := "../../../scripts/cleanup-kubernetes.sh"
 
 	// Check if script exists
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {

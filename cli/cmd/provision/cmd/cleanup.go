@@ -11,7 +11,7 @@ import (
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup",
 	Short: "Clean up provisioned resources",
-	Long:  `Clean up provisioned infrastructure components like Kubernetes clusters, PostgreSQL, etc.`,
+	Long:  `Clean up provisioned infrastructure components like Kubernetes clusters etc.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cleanupInteractive()
 	},

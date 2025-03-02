@@ -8,6 +8,7 @@ import (
 
 	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/ansible"
 	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/config"
+	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/embedded"
 	"github.com/bxtal-lsn/kubernetes/cli/cmd/provision/interactive"
 	"gopkg.in/yaml.v3"
 )
@@ -214,6 +215,8 @@ func ProvisionInteractive() error {
 
 // runProvisionScript runs the actual Kubernetes provisioning
 func runProvisionScript(configPath string) error {
+	fmt.Println("Starting VM provisioning process...")
+
 	// Get repository paths for inventory and playbook
 	inventory, err := config.GetAnsiblePath("inventories/kubernetes.yml")
 	if err != nil {
@@ -231,6 +234,21 @@ func runProvisionScript(configPath string) error {
 	}
 	if _, err := os.Stat(playbook); os.IsNotExist(err) {
 		return fmt.Errorf("playbook file does not exist: %s", playbook)
+	}
+
+	// In runProvisionScript, replace the existing inventory creation with:
+
+	// Force create inventory for testing
+	fmt.Println("Creating inventory file...")
+	inventoryPath, err := ForceCreateInventory()
+	if err != nil {
+		return fmt.Errorf("failed to create inventory: %w", err)
+	}
+
+	// Check the inventory file path
+	fmt.Printf("Using inventory path: %s\n", inventoryPath)
+	if _, err := os.Stat(inventoryPath); os.IsNotExist(err) {
+		return fmt.Errorf("inventory file does not exist after creation: %s", inventoryPath)
 	}
 
 	// Run ansible-playbook
@@ -257,4 +275,124 @@ func Cleanup() error {
 	cmd.Stdin = os.Stdin // Pass stdin for any prompts
 
 	return cmd.Run()
+}
+
+// In kubernetes/provision.go, add or modify the createInventory function:
+func createInventory(controlPlaneIP, node01IP, node02IP, node03IP, sshKeyPath string) (string, error) {
+	// Define the inventory file path
+	inventoryDir := filepath.Join(embedded.TempDir, "ansible", "inventories")
+	inventoryPath := filepath.Join(inventoryDir, "kubernetes.yml")
+
+	// Create the directory explicitly
+	if err := os.MkdirAll(inventoryDir, 0o755); err != nil {
+		return "", fmt.Errorf("failed to create inventory directory: %w", err)
+	}
+
+	// Create inventory content
+	inventoryContent := fmt.Sprintf(`---
+all:
+  children:
+    k8s_cluster:
+      children:
+        control_plane:
+          hosts:
+            controlplane:
+              ansible_host: %s
+        workers:
+          hosts:
+            node01:
+              ansible_host: %s
+            node02:
+              ansible_host: %s
+            node03:
+              ansible_host: %s
+  vars:
+    ansible_user: ubuntu
+    ansible_become: yes
+    ansible_ssh_private_key_file: %s
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+`, controlPlaneIP, node01IP, node02IP, node03IP, sshKeyPath)
+
+	// Write the inventory file
+	if err := os.WriteFile(inventoryPath, []byte(inventoryContent), 0o644); err != nil {
+		return "", fmt.Errorf("failed to write inventory file: %w", err)
+	}
+
+	// Verify the file was created
+	if _, err := os.Stat(inventoryPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("inventory file was not created at %s", inventoryPath)
+	}
+
+	fmt.Printf("Created inventory file at: %s\n", inventoryPath)
+	return inventoryPath, nil
+}
+
+// ForceCreateInventory creates the inventory file directly at the expected location
+func ForceCreateInventory() (string, error) {
+	// Define the inventory file path - use embedded.TempDir as the base
+	inventoryDir := filepath.Join(embedded.TempDir, "ansible", "inventories")
+	inventoryPath := filepath.Join(inventoryDir, "kubernetes.yml")
+
+	fmt.Printf("Creating inventory directory: %s\n", inventoryDir)
+
+	// Create the directory with full permissions
+	if err := os.MkdirAll(inventoryDir, 0o777); err != nil {
+		return "", fmt.Errorf("failed to create inventory directory: %w", err)
+	}
+
+	// Dummy values for testing
+	controlPlaneIP := "192.168.64.10"
+	node01IP := "192.168.64.11"
+	node02IP := "192.168.64.12"
+	node03IP := "192.168.64.13"
+	sshKeyPath := "/tmp/dummy_ssh_key"
+
+	// Create inventory content
+	inventoryContent := fmt.Sprintf(`---
+all:
+  children:
+    k8s_cluster:
+      children:
+        control_plane:
+          hosts:
+            controlplane:
+              ansible_host: %s
+        workers:
+          hosts:
+            node01:
+              ansible_host: %s
+            node02:
+              ansible_host: %s
+            node03:
+              ansible_host: %s
+  vars:
+    ansible_user: ubuntu
+    ansible_become: yes
+    ansible_ssh_private_key_file: %s
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+`, controlPlaneIP, node01IP, node02IP, node03IP, sshKeyPath)
+
+	fmt.Printf("Writing inventory file to: %s\n", inventoryPath)
+
+	// Write the inventory file
+	if err := os.WriteFile(inventoryPath, []byte(inventoryContent), 0o666); err != nil {
+		return "", fmt.Errorf("failed to write inventory file: %w", err)
+	}
+
+	// Double check the file was created
+	if _, err := os.Stat(inventoryPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("inventory file was not created at %s", inventoryPath)
+	}
+
+	fmt.Printf("Inventory file successfully created at: %s\n", inventoryPath)
+
+	// Additional verification - try to read it back
+	content, err := os.ReadFile(inventoryPath)
+	if err != nil {
+		return "", fmt.Errorf("could not read back inventory file: %w", err)
+	}
+
+	fmt.Printf("Inventory file content length: %d bytes\n", len(content))
+
+	return inventoryPath, nil
 }

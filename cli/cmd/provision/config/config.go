@@ -22,6 +22,7 @@ func GetRepoRoot() (string, error) {
 }
 
 // findRepoRoot attempts to find the repository root by looking for marker files/directories
+// Update this function in cli/cmd/provision/config/config.go
 func findRepoRoot() (string, error) {
 	// Start from the current working directory
 	cwd, err := os.Getwd()
@@ -32,34 +33,53 @@ func findRepoRoot() (string, error) {
 	// Walk up the directory tree until we find a marker of the repository root
 	currentDir := cwd
 	for {
-		// Check for common repository root markers:
+		// Check for multiple repository root markers in a specific order
 
-		// 1. Check if ansible directory exists
+		// First check for the most reliable markers
 		ansibleDir := filepath.Join(currentDir, "ansible")
-		if dirExists(ansibleDir) {
+		ansibleDefaultsDir := filepath.Join(currentDir, "ansible", "defaults")
+		scriptsDir := filepath.Join(currentDir, "scripts")
+
+		// Add more specific file checks
+		kubernetesYml := filepath.Join(currentDir, "ansible", "defaults", "kubernetes.yml")
+		provisionScript := filepath.Join(currentDir, "scripts", "provision-kubernetes.sh")
+
+		// Check all variations
+		if dirExists(ansibleDir) && dirExists(ansibleDefaultsDir) {
 			return currentDir, nil
 		}
 
-		// 2. Check for scripts directory with our kubernetes scripts
-		scriptsDir := filepath.Join(currentDir, "scripts", "provision-kubernetes.sh")
-		if fileExists(scriptsDir) {
+		if dirExists(scriptsDir) && fileExists(provisionScript) {
 			return currentDir, nil
 		}
 
-		// 3. Check for .git directory as a fallback
+		if fileExists(kubernetesYml) {
+			return currentDir, nil
+		}
+
+		// Check for .git directory as a fallback
 		gitDir := filepath.Join(currentDir, ".git")
 		if dirExists(gitDir) {
-			return currentDir, nil
+			// Additional validation when using .git as marker
+			// Make sure this is actually our repository by checking for a known file
+			if fileExists(filepath.Join(currentDir, "README.md")) ||
+				dirExists(filepath.Join(currentDir, "ansible")) ||
+				dirExists(filepath.Join(currentDir, "scripts")) {
+				return currentDir, nil
+			}
 		}
 
 		// Move up one directory
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
 			// We've reached the filesystem root without finding the repo root
-			return "", fmt.Errorf("repository root not found: no repository markers found in parent directories")
+			break
 		}
 		currentDir = parentDir
 	}
+
+	// More helpful error message
+	return "", fmt.Errorf("repository root not found: the CLI needs to be run within the kubernetes repository that contains ansible/defaults/kubernetes.yml file. Please verify your directory structure or run 'git clone' to ensure you have the complete repository")
 }
 
 // dirExists checks if a directory exists

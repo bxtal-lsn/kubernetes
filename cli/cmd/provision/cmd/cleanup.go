@@ -47,4 +47,3 @@ func cleanupInteractive() {
 		fmt.Println("Invalid choice")
 	}
 }
-

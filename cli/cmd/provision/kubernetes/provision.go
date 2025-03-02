@@ -217,42 +217,32 @@ func ProvisionInteractive() error {
 func runProvisionScript(configPath string) error {
 	fmt.Println("Starting VM provisioning process...")
 
-	// Get repository paths for inventory and playbook
-	inventory, err := config.GetAnsiblePath("inventories/kubernetes.yml")
-	if err != nil {
-		return fmt.Errorf("failed to locate inventory file: %w", err)
-	}
-
+	// Get playbook path only (don't check inventory yet)
 	playbook, err := config.GetAnsiblePath("playbooks/kubernetes.yml")
 	if err != nil {
 		return fmt.Errorf("failed to locate playbook file: %w", err)
 	}
 
-	// Check if files exist
-	if _, err := os.Stat(inventory); os.IsNotExist(err) {
-		return fmt.Errorf("inventory file does not exist: %s", inventory)
-	}
+	// Check if playbook exists
 	if _, err := os.Stat(playbook); os.IsNotExist(err) {
 		return fmt.Errorf("playbook file does not exist: %s", playbook)
 	}
 
-	// In runProvisionScript, replace the existing inventory creation with:
-
-	// Force create inventory for testing
+	// Create inventory file
 	fmt.Println("Creating inventory file...")
 	inventoryPath, err := ForceCreateInventory()
 	if err != nil {
 		return fmt.Errorf("failed to create inventory: %w", err)
 	}
 
-	// Check the inventory file path
+	// Check the inventory file path AFTER creating it
 	fmt.Printf("Using inventory path: %s\n", inventoryPath)
 	if _, err := os.Stat(inventoryPath); os.IsNotExist(err) {
 		return fmt.Errorf("inventory file does not exist after creation: %s", inventoryPath)
 	}
 
 	// Run ansible-playbook
-	return ansible.RunPlaybook(playbook, inventory, []string{"-e", "@" + configPath})
+	return ansible.RunPlaybook(playbook, inventoryPath, []string{"-e", "@" + configPath})
 }
 
 // Cleanup handles Kubernetes cluster cleanup

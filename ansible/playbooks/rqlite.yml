@@ -1,16 +1,16 @@
 ---
 # ansible/playbooks/rqlite.yml
-- name: Common configuration for all rqlite nodes
-  hosts: rqlite_cluster
-  become: yes
-  vars_files:
-    - ../defaults/rqlite.yml
-  tags: 
-    - common
-  tasks:
-    - include_tasks: ../tasks/kubernetes/setup-hosts.yml
-    - include_tasks: ../tasks/kubernetes/update-dns.yml
-    - include_tasks: ../tasks/kubernetes/ssh.yml
+#- name: Common configuration for all rqlite nodes
+#  hosts: rqlite_cluster
+#  become: yes
+#  vars_files:
+#    - ../defaults/rqlite.yml
+#  tags: 
+#    - common
+#  tasks:
+#    - include_tasks: ../tasks/rqlite/setup-hosts.yml
+#    - include_tasks: ../tasks/rqlite/update-dns.yml
+#    - include_tasks: ../tasks/rqlite/ssh.yml
       
 - name: Setup all rqlite nodes
   hosts: rqlite_cluster

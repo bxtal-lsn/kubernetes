@@ -1,0 +1,39 @@
+---
+# ansible/tasks/rqlite/follower-join.yml
+- name: Create follower service file
+  copy:
+    dest: /etc/systemd/system/rqlited.service
+    content: |
+      [Unit]
+      Description=rqlite distributed SQLite follower node
+      After=network.target
+
+      [Service]
+      Type=simple
+      User={{ ansible_user }}
+      Group={{ ansible_user }}
+      WorkingDirectory=/home/{{ ansible_user }}
+      ExecStart=/usr/local/bin/rqlited -node-id {{ groups['rqlite_nodes'].index(inventory_hostname) + 1 }} -http-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-addr {{ ansible_host }}:{{ rqlite_raft_port }} -join {{ hostvars[groups['rqlite_leader'][0]]['ansible_host'] }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Configure firewall (UFW)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  with_items:
+    - "{{ rqlite_http_port }}"
+    - "{{ rqlite_raft_port }}"
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes  # In case UFW isn't installed
+
+- name: Start and enable rqlite service on follower node
+  systemd:
+    name: rqlited
+    enabled: yes
+    daemon_reload: yes
+    state: started

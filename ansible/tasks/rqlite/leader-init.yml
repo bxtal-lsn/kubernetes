@@ -1,0 +1,61 @@
+---
+# ansible/tasks/rqlite/leader-init.yml
+- name: Create leader service file
+  copy:
+    dest: /etc/systemd/system/rqlited.service
+    content: |
+      [Unit]
+      Description=rqlite distributed SQLite leader node
+      After=network.target
+
+      [Service]
+      Type=simple
+      User={{ ansible_user }}
+      Group={{ ansible_user }}
+      WorkingDirectory=/home/{{ ansible_user }}
+      ExecStart=/usr/local/bin/rqlited -node-id 1 -http-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-addr {{ ansible_host }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Configure firewall (UFW)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  with_items:
+    - "{{ rqlite_http_port }}"
+    - "{{ rqlite_raft_port }}"
+  when: ansible_os_family == "Debian"
+  ignore_errors: yes  # In case UFW isn't installed
+
+- name: Start and enable rqlite service on leader node
+  systemd:
+    name: rqlited
+    enabled: yes
+    daemon_reload: yes
+    state: started
+
+- name: Wait for leader node to be fully operational
+  uri:
+    url: "http://{{ ansible_host }}:{{ rqlite_http_port }}/readyz"
+    return_content: yes
+  register: leader_ready
+  until: leader_ready.status == 200
+  retries: 12   # Try for up to 1 minute (5 seconds × 12)
+  delay: 5      # 5 second delay between retries
+
+- name: Ensure leader has stabilized
+  pause:
+    seconds: 5
+      
+- name: Check leader status
+  shell: "curl -s http://{{ ansible_host }}:{{ rqlite_http_port }}/status?pretty"
+  register: leader_status
+  changed_when: false
+      
+- name: Display leader status
+  debug:
+    var: leader_status.stdout_lines

@@ -5,8 +5,21 @@ Only tested on Ubuntu-24.04 wsl
 
 ```bash
 # Please install golang v1.22 or greater before starting
+# and multipass, and ansible
+
+# Golang
 sudo apt install golang
 
+# Ansible (Please double check installation process yourself if this is outdated)
+sudo apt update
+sudo apt install software-properties-common
+sudo add-apt-repository --yes --update ppa:ansible/ansible
+sudo apt install ansible
+
+# multipass (If you encounter authentication error, please follow step 6 in troubleshooting section
+sudo snap install multipass
+
+# Run provisioning
 # Option 1: Using CLI tool (recommended)
 ./cli/build.sh              # build CLI tool in project 
 ./provision-cli provision     # Run interactive provisioning in project root

@@ -6,17 +6,17 @@ all:
         control_plane:
           hosts:
             controlplane:
-              ansible_host: 10.57.249.3
+              ansible_host: 10.193.215.215
         workers:
           hosts:
             node01:
-              ansible_host: 10.57.249.58
+              ansible_host: 10.193.215.247
             node02:
-              ansible_host: 10.57.249.184
+              ansible_host: 10.193.215.126
             node03:
-              ansible_host: 10.57.249.34
+              ansible_host: 10.193.215.158
   vars:
     ansible_user: ubuntu
     ansible_become: yes
-    ansible_ssh_private_key_file: /home/bl/.ssh/id_rsa_provisioning
+    ansible_ssh_private_key_file: /home/bxtal/.ssh/id_rsa_provisioning
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

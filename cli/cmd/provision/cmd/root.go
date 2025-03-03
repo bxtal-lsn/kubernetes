@@ -8,13 +8,17 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "provision",
-	Short: "Infrastructure provisioning tool",
-	Long: `A flexible CLI for provisioning and managing infrastructure components
-such as Kubernetes clusters, PostgreSQL clusters, and more.`,
+	Use:   "provision-cli",
+	Short: "Kubernetes cluster provisioning tool",
+	Long: `A simple CLI for provisioning and managing Kubernetes clusters on local VMs.
+This tool must be run from the project root directory.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		// If no subcommand is provided, show help
+		cmd.Help()
+	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute adds all child commands to the root command and sets flags appropriately
 func Execute() error {
 	return rootCmd.Execute()
 }

@@ -6,10 +6,11 @@ import (
 	"os/exec"
 )
 
-// RunPlaybook executes an Ansible playbook with the given inventory and extra variables
+// RunPlaybook executes an Ansible playbook with the given inventory
 func RunPlaybook(playbook, inventory string, extraArgs []string) error {
 	// Check if ansible-playbook is available
-	if _, err := exec.LookPath("ansible-playbook"); err != nil {
+	_, err := exec.LookPath("ansible-playbook")
+	if err != nil {
 		return fmt.Errorf("ansible-playbook command not found: %w", err)
 	}
 
@@ -28,9 +29,10 @@ func RunPlaybook(playbook, inventory string, extraArgs []string) error {
 	// Connect the command's outputs to our process's outputs
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin // Pass stdin for any prompts
+	cmd.Stdin = os.Stdin
 
 	// Run the command
 	fmt.Printf("Running: ansible-playbook %v\n", args)
 	return cmd.Run()
 }
+

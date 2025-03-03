@@ -6,37 +6,13 @@ A user-friendly CLI tool for provisioning and managing infrastructure components
 
 > **Important**: This tool has only been tested on Ubuntu 24.04 and WSL Ubuntu 24.04. There is no guarantee it will work on other operating systems.
 
-### Quick Install (Ubuntu)
+### Quick install/build (Ubuntu)
 
 ```bash
-./install.sh
-
-# Make sure ~/.local/bin is in your PATH
-export PATH="$PATH:$HOME/.local/bin"
+./build.sh
 ```
 
-This installs the CLI tool to `~/.local/bin`. You may need to add this directory to your PATH if it's not already there. To make this change permanent, add the export line to your `~/.bashrc` or `~/.profile`.
-
-### Manual Install
-
-Find the appropriate binary for your platform in the `bin` directory:
-
-```bash
-# Create ~/.local/bin directory if it doesn't exist
-mkdir -p ~/.local/bin
-
-# Example for Linux/AMD64
-cp bin/linux_amd64/provision ~/.local/bin/
-chmod +x ~/.local/bin/provision
-
-# Add to PATH if needed
-export PATH="$PATH:$HOME/.local/bin"
-```
-
-Available binaries:
-- Linux: `bin/linux_amd64/provision` or `bin/linux_arm64/provision`
-- macOS: `bin/darwin_amd64/provision` or `bin/darwin_arm64/provision`
-- Windows: `bin/windows_amd64/provision.exe`
+This builds the CLI tool to project root.
 
 ## Usage
 
@@ -110,9 +86,9 @@ Cleanup completed successfully
 To modify or extend the CLI tool:
 
 1. Make changes to the Go code
-2. Build binaries for all platforms:
+2. Build binary:
    ```bash
-   ./scripts/build-release.sh
+   ./build.sh
    ```
 
 ### Adding New Commands

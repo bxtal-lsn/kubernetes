@@ -1,11 +1,12 @@
 # Kubernetes Local Development Environment
+Only tested on Ubuntu-24.04 wsl
 
 ## Quick Start
 
 ```bash
 # Option 1: Using CLI tool (recommended)
-./cli/install.sh          # Install the CLI tool
-provision                 # Run interactive provisioning
+./cli/build.sh              # build CLI tool in project 
+provision-cli provision     # Run interactive provisioning in project root
 
 # Option 2: Using scripts directly
 ./scripts/provision-kubernetes.sh   # Create Kubernetes cluster
@@ -34,15 +35,12 @@ This project provides tools to create and manage local Kubernetes development en
 The CLI tool provides a user-friendly interface for managing your environments:
 
 ```bash
-# Install CLI tool
-./cli/install.sh
+# build CLI tool
+./cli/build.sh
 
-# The installer adds the binary to ~/.local/bin
-# Make sure this is in your PATH
-export PATH="$PATH:$HOME/.local/bin"
-
+# The installer adds the binary to project root
 # Run the tool
-provision
+provision-cli provision
 ```
 
 [CLI Documentation](./cli/README.md) - Detailed CLI usage and development

@@ -8,12 +8,13 @@
   until: node_ready.status == 200
   retries: 12
   delay: 5
-  with_items: "{{ groups['rqlite_nodes'] }}"
+  with_items: 
+    - "{{ rqlite_node_list }}"
   delegate_to: localhost
   run_once: true
 
 - name: Check cluster status
-  shell: "curl -s http://{{ hostvars[groups['rqlite_leader'][0]]['ansible_host'] }}:{{ rqlite_http_port }}/nodes?pretty"
+  shell: "curl -s http://{{ hostvars[rqlite_leader_node]['ansible_host'] }}:{{ rqlite_http_port }}/nodes?pretty"
   register: cluster_status
   changed_when: false
   delegate_to: localhost
@@ -27,7 +28,7 @@
 
 - name: Verify node count
   debug:
-    msg: "Successfully configured {{ groups['rqlite_nodes'] | length }} rqlite nodes"
+    msg: "Successfully configured {{ rqlite_node_list | length }} rqlite nodes"
   delegate_to: localhost
   run_once: true
 
@@ -35,8 +36,8 @@
   debug:
     msg: 
       - "rqlite cluster validation summary:"
-      - "Leader node: {{ hostvars[groups['rqlite_leader'][0]]['ansible_host'] }}"
-      - "Follower nodes: {{ groups['rqlite_followers'] | map('extract', hostvars, ['ansible_host']) | join(', ') }}"
+      - "Leader node: {{ hostvars[rqlite_leader_node]['ansible_host'] }}"
+      - "Follower nodes: {{ rqlite_node_list | difference([rqlite_leader_node]) | map('extract', hostvars, 'ansible_host') | list | join(', ') }}"
       - "HTTP API port: {{ rqlite_http_port }}"
       - "Raft consensus port: {{ rqlite_raft_port }}"
   delegate_to: localhost

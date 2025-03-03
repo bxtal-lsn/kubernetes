@@ -7,6 +7,13 @@ rqlite_data_dir: "/home/{{ ansible_user }}/data"
 rqlite_extract_dir: "/opt/rqlite"
 rqlite_download_url: "https://github.com/rqlite/rqlite/releases/download/v{{ rqlite_version }}/rqlite-v{{ rqlite_version }}-linux-amd64.tar.gz"
 
+# Node configuration
+rqlite_node_list:
+  - rqlite1
+  - rqlite2
+  - rqlite3
+rqlite_leader_node: rqlite1
+
 # Node resources
 node_cpus: 2
 node_memory: 2G

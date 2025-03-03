@@ -1,0 +1,53 @@
+---
+# ansible/playbooks/rqlite.yml
+- name: Common configuration for all rqlite nodes
+  hosts: rqlite_cluster
+  become: yes
+  vars_files:
+    - ../defaults/rqlite.yml
+  tags: 
+    - common
+  tasks:
+    - include_tasks: ../tasks/kubernetes/setup-hosts.yml
+    - include_tasks: ../tasks/kubernetes/update-dns.yml
+    - include_tasks: ../tasks/kubernetes/ssh.yml
+      
+- name: Setup all rqlite nodes
+  hosts: rqlite_cluster
+  become: yes
+  vars_files:
+    - ../defaults/rqlite.yml
+  tags:
+    - rqlite-setup
+  tasks:
+    - include_tasks: ../tasks/rqlite/node-setup.yml
+
+- name: Initialize rqlite leader node
+  hosts: rqlite_leader
+  become: yes
+  vars_files:
+    - ../defaults/rqlite.yml
+  tags:
+    - leader
+  tasks:
+    - include_tasks: ../tasks/rqlite/leader-init.yml
+
+- name: Join follower nodes to cluster
+  hosts: rqlite_followers
+  become: yes
+  vars_files:
+    - ../defaults/rqlite.yml
+  tags:
+    - followers
+  tasks:
+    - include_tasks: ../tasks/rqlite/follower-join.yml
+
+- name: Validate rqlite cluster
+  hosts: rqlite_cluster
+  become: yes
+  vars_files:
+    - ../defaults/rqlite.yml
+  tags:
+    - validate
+  tasks:
+    - include_tasks: ../tasks/rqlite/validate-cluster.yml

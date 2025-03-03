@@ -1,0 +1,18 @@
+---
+# rqlite configuration
+rqlite_version: "8.36.11"
+rqlite_http_port: 4001
+rqlite_raft_port: 4002
+rqlite_data_dir: "/home/{{ ansible_user }}/data"
+rqlite_extract_dir: "/opt/rqlite"
+rqlite_download_url: "https://github.com/rqlite/rqlite/releases/download/v{{ rqlite_version }}/rqlite-v{{ rqlite_version }}-linux-amd64.tar.gz"
+
+# Node resources
+node_cpus: 2
+node_memory: 2G
+node_disk: 10G
+
+# DNS configuration
+dns_servers:
+  - "8.8.8.8"
+  - "8.8.4.4"

@@ -1,0 +1,52 @@
+---
+# ansible/tasks/rqlite/node-setup.yml
+- name: Install required packages
+  apt:
+    name: 
+      - tar
+      - wget
+      - curl
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install required packages (RHEL/CentOS)
+  yum:
+    name:
+      - tar
+      - wget
+      - curl
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Create rqlite directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+  with_items:
+    - "{{ rqlite_extract_dir }}"
+    - "{{ rqlite_data_dir }}"
+
+- name: Download and extract rqlite
+  unarchive:
+    src: "{{ rqlite_download_url }}"
+    dest: "{{ rqlite_extract_dir }}"
+    remote_src: yes
+    creates: "{{ rqlite_extract_dir }}/rqlited"
+    extra_opts:
+      - --strip-components=1
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Copy rqlite binaries to /usr/local/bin
+  copy:
+    src: "{{ rqlite_extract_dir }}/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+    remote_src: yes
+  with_items:
+    - rqlited
+    - rqlite

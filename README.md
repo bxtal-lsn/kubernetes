@@ -6,7 +6,7 @@ Only tested on Ubuntu-24.04 wsl
 ```bash
 # Option 1: Using CLI tool (recommended)
 ./cli/build.sh              # build CLI tool in project 
-provision-cli provision     # Run interactive provisioning in project root
+./provision-cli provision     # Run interactive provisioning in project root
 
 # Option 2: Using scripts directly
 ./scripts/provision-kubernetes.sh   # Create Kubernetes cluster
@@ -40,7 +40,7 @@ The CLI tool provides a user-friendly interface for managing your environments:
 
 # The installer adds the binary to project root
 # Run the tool
-provision-cli provision
+./provision-cli provision
 ```
 
 [CLI Documentation](./cli/README.md) - Detailed CLI usage and development

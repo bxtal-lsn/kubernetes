@@ -1,0 +1,12 @@
+# helm/rqlite/values.yaml
+replicas: 3
+image:
+  repository: rqlite/rqlite
+  tag: "8.36.11"
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+service:
+  type: ClusterIP

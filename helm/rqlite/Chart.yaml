@@ -1,0 +1,7 @@
+# helm/rqlite/Chart.yaml
+apiVersion: v2
+name: rqlite
+description: A Helm chart for deploying rqlite on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "8.36.11"

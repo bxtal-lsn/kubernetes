@@ -1,0 +1,16 @@
+# helm/rqlite/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+  - name: http
+    port: 4001
+    targetPort: http
+  - name: raft 
+    port: 4002
+    targetPort: raft
+  clusterIP: None  # Headless service for StatefulSet

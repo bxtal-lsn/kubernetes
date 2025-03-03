@@ -1,0 +1,56 @@
+# helm/rqlite/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  serviceName: {{ .Release.Name }}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: rqlite
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        ports:
+        - containerPort: 4001
+          name: http
+        - containerPort: 4002
+          name: raft
+        volumeMounts:
+        - name: data
+          mountPath: /rqlite/data
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        command:
+        - /bin/sh
+        - -c
+        - >
+          if [ "${POD_NAME}" = "{{ .Release.Name }}-0" ]; then
+            exec rqlited -node-id ${POD_NAME} -http-addr 0.0.0.0:4001 -raft-addr 0.0.0.0:4002 /rqlite/data;
+          else
+            exec rqlited -node-id ${POD_NAME} -http-addr 0.0.0.0:4001 -raft-addr 0.0.0.0:4002 -join {{ .Release.Name }}-0.{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local:4002 /rqlite/data;
+          fi
+{{- if not .Values.persistence.enabled }}
+      volumes:
+      - name: data
+        emptyDir: {}
+{{- end }}
+{{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: {{ .Values.persistence.size }}
+{{- end }}

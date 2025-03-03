@@ -1,0 +1,21 @@
+[Unit]
+Description=rqlite distributed SQLite database
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+LimitNOFILE=65536
+Restart=always
+RestartSec=5
+{% if inventory_hostname == groups['rqlite_nodes'][0] %}
+# Leader node configuration - initial node doesn't join any other node
+ExecStart=/usr/local/bin/rqlited -node-id 1 -http-addr 0.0.0.0:{{ rqlite_http_port }} -raft-addr 0.0.0.0:{{ rqlite_raft_port }} -http-adv-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-adv-addr {{ ansible_host }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+{% else %}
+# Follower node configuration - they join the leader
+ExecStart=/usr/local/bin/rqlited -node-id {{ groups['rqlite_nodes'].index(inventory_hostname) + 1 }} -http-addr 0.0.0.0:{{ rqlite_http_port }} -raft-addr 0.0.0.0:{{ rqlite_raft_port }} -http-adv-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-adv-addr {{ ansible_host }}:{{ rqlite_raft_port }} -join {{ hostvars[groups['rqlite_nodes'][0]]['ansible_host'] }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,340 @@
+---
+# Ansible playbook for deploying a rqlite cluster
+# Run with: ansible-playbook -i inventory.yml deploy-rqlite.yml -e "node_ips=10.203.146.136,10.203.146.91,10.203.146.232 leader_ip=10.203.146.232 ansible_user=ubuntu"
+
+- name: Process input parameters and set up host groups
+  hosts: localhost
+  connection: local  # Use local connection instead of SSH
+  gather_facts: no
+  tasks:
+    - name: Validate required variables are provided
+      fail:
+        msg: "Required variables 'node_ips' and 'leader_ip' must be provided"
+      when: node_ips is not defined or leader_ip is not defined
+
+    - name: Create array of IPs from comma-separated string
+      set_fact:
+        ip_list: "{{ node_ips.split(',') }}"
+
+    - name: Verify leader_ip is in the node_ips list
+      fail:
+        msg: "Leader IP ({{ leader_ip }}) must be included in the list of node IPs"
+      when: leader_ip not in ip_list
+
+    - name: Add leader node to inventory
+      add_host:
+        name: "leader"
+        ansible_host: "{{ leader_ip }}"
+        node_id: "{{ ip_list.index(leader_ip) + 1 }}"
+        groups: "rqlite_leader,rqlite_cluster"
+
+    # Explicitly handle up to 2 follower nodes - this approach avoids complex loops
+    - name: Add first follower node if it exists
+      add_host:
+        name: "follower1"
+        ansible_host: "{{ item }}"
+        node_id: "{{ ip_list.index(item) + 1 }}"
+        groups: "rqlite_followers,rqlite_cluster"
+      with_items: "{{ ip_list }}"
+      when: item != leader_ip
+      run_once: true
+      ignore_errors: yes
+
+    - name: Add second follower node if it exists
+      add_host:
+        name: "follower2"
+        ansible_host: "{{ item }}"
+        node_id: "{{ ip_list.index(item) + 1 }}"
+        groups: "rqlite_followers,rqlite_cluster"
+      with_items: "{{ ip_list }}"
+      when: 
+        - item != leader_ip 
+        - item != (hostvars['follower1']['ansible_host'] | default(''))
+      run_once: true
+      ignore_errors: yes
+
+    - name: Display hosts configuration
+      debug:
+        msg: |
+          Leader: {{ hostvars['leader']['ansible_host'] }} (node ID: {{ hostvars['leader']['node_id'] }})
+          Followers: {{ groups['rqlite_followers'] | map('extract', hostvars, ['ansible_host']) | join(', ') }}
+
+# Deploy leader node first, then followers
+- name: Deploy leader node
+  hosts: rqlite_leader
+  gather_facts: yes
+  become: yes
+  vars:
+    rqlite_version: "8.36.11"
+    rqlite_http_port: 4001
+    rqlite_raft_port: 4002
+    rqlite_data_dir: "/home/{{ ansible_user }}/data"
+    rqlite_download_url: "https://github.com/rqlite/rqlite/releases/download/v{{ rqlite_version }}/rqlite-v{{ rqlite_version }}-linux-amd64.tar.gz"
+    rqlite_extract_dir: "/opt/rqlite"
+    leader_host: "{{ hostvars['leader']['ansible_host'] }}"
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - tar
+          - wget
+          - curl
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages (RHEL/CentOS)
+      yum:
+        name:
+          - tar
+          - wget
+          - curl
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Create rqlite directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      with_items:
+        - "{{ rqlite_extract_dir }}"
+        - "{{ rqlite_data_dir }}"
+
+    - name: Download and extract rqlite
+      unarchive:
+        src: "{{ rqlite_download_url }}"
+        dest: "{{ rqlite_extract_dir }}"
+        remote_src: yes
+        creates: "{{ rqlite_extract_dir }}/rqlited"
+        extra_opts:
+          - --strip-components=1
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Copy rqlite binaries to /usr/local/bin
+      copy:
+        src: "{{ rqlite_extract_dir }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+        remote_src: yes
+      with_items:
+        - rqlited
+        - rqlite
+
+    - name: Create leader service file
+      copy:
+        dest: /etc/systemd/system/rqlited.service
+        content: |
+          [Unit]
+          Description=rqlite distributed SQLite leader node
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ ansible_user }}
+          Group={{ ansible_user }}
+          WorkingDirectory=/home/{{ ansible_user }}
+          ExecStart=/usr/local/bin/rqlited -node-id {{ node_id }} -http-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-addr {{ ansible_host }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Configure firewall (UFW)
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      with_items:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: ansible_os_family == "Debian"
+      ignore_errors: yes  # In case UFW isn't installed or enabled
+
+    - name: Configure firewall (firewalld)
+      firewalld:
+        port: "{{ item }}/tcp"
+        permanent: yes
+        state: enabled
+      with_items:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: ansible_os_family == "RedHat"
+      ignore_errors: yes  # In case firewalld isn't installed or enabled
+
+    - name: Start and enable rqlite service on leader node
+      systemd:
+        name: rqlited
+        enabled: yes
+        daemon_reload: yes
+        state: started
+
+    # Verify leader is fully operational before moving to followers
+    - name: Wait for leader node to be fully operational
+      uri:
+        url: "http://{{ leader_host }}:{{ rqlite_http_port }}/readyz"
+        return_content: yes
+      register: leader_ready
+      until: leader_ready.status == 200
+      retries: 12   # Try for up to 1 minute (5 seconds × 12)
+      delay: 5      # 5 second delay between retries
+
+    - name: Ensure leader has stabilized
+      pause:
+        seconds: 5
+      
+    - name: Check leader status
+      shell: "curl -s http://{{ leader_host }}:{{ rqlite_http_port }}/status?pretty"
+      register: leader_status
+      changed_when: false
+      
+    - name: Display leader status
+      debug:
+        var: leader_status.stdout_lines
+
+# Deploy follower nodes after the leader is ready
+- name: Deploy follower nodes
+  hosts: rqlite_followers
+  gather_facts: yes
+  become: yes
+  vars:
+    rqlite_version: "8.36.11"
+    rqlite_http_port: 4001
+    rqlite_raft_port: 4002
+    rqlite_data_dir: "/home/{{ ansible_user }}/data"
+    rqlite_download_url: "https://github.com/rqlite/rqlite/releases/download/v{{ rqlite_version }}/rqlite-v{{ rqlite_version }}-linux-amd64.tar.gz"
+    rqlite_extract_dir: "/opt/rqlite"
+    leader_host: "{{ hostvars['leader']['ansible_host'] }}"
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - tar
+          - wget
+          - curl
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages (RHEL/CentOS)
+      yum:
+        name:
+          - tar
+          - wget
+          - curl
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Create rqlite directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      with_items:
+        - "{{ rqlite_extract_dir }}"
+        - "{{ rqlite_data_dir }}"
+
+    - name: Download and extract rqlite
+      unarchive:
+        src: "{{ rqlite_download_url }}"
+        dest: "{{ rqlite_extract_dir }}"
+        remote_src: yes
+        creates: "{{ rqlite_extract_dir }}/rqlited"
+        extra_opts:
+          - --strip-components=1
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Copy rqlite binaries to /usr/local/bin
+      copy:
+        src: "{{ rqlite_extract_dir }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+        remote_src: yes
+      with_items:
+        - rqlited
+        - rqlite
+
+    - name: Create follower service file
+      copy:
+        dest: /etc/systemd/system/rqlited.service
+        content: |
+          [Unit]
+          Description=rqlite distributed SQLite follower node
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ ansible_user }}
+          Group={{ ansible_user }}
+          WorkingDirectory=/home/{{ ansible_user }}
+          ExecStart=/usr/local/bin/rqlited -node-id {{ node_id }} -http-addr {{ ansible_host }}:{{ rqlite_http_port }} -raft-addr {{ ansible_host }}:{{ rqlite_raft_port }} -join {{ leader_host }}:{{ rqlite_raft_port }} {{ rqlite_data_dir }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Configure firewall (UFW)
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      with_items:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: ansible_os_family == "Debian"
+      ignore_errors: yes  # In case UFW isn't installed or enabled
+
+    - name: Configure firewall (firewalld)
+      firewalld:
+        port: "{{ item }}/tcp"
+        permanent: yes
+        state: enabled
+      with_items:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: ansible_os_family == "RedHat"
+      ignore_errors: yes  # In case firewalld isn't installed or enabled
+
+    - name: Start and enable rqlite service on follower nodes
+      systemd:
+        name: rqlited
+        enabled: yes
+        daemon_reload: yes
+        state: started
+
+# Check cluster status after all nodes are deployed
+- name: Verify cluster status
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    leader_host: "{{ hostvars['leader']['ansible_host'] }}"
+    rqlite_http_port: 4001
+  tasks:
+    - name: Wait for all nodes to be up
+      uri:
+        url: "http://{{ leader_host }}:{{ rqlite_http_port }}/readyz"
+        return_content: yes
+      register: cluster_ready
+      until: cluster_ready.status == 200
+      retries: 6
+      delay: 5
+
+    - name: Check cluster status
+      shell: "curl -s http://{{ leader_host }}:{{ rqlite_http_port }}/nodes?pretty"
+      register: cluster_status
+      changed_when: false
+      
+    - name: Display cluster status
+      debug:
+        var: cluster_status.stdout_lines

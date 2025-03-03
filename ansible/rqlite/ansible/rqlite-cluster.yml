@@ -1,0 +1,157 @@
+---
+# Ansible playbook for deploying a 3-node rqlite cluster
+# Filename: rqlite-cluster.yml
+
+- name: Deploy rqlite cluster
+  hosts: rqlite_nodes
+  become: yes
+  vars:
+    rqlite_version: "7.21.4"  # Change to the latest version as needed
+    rqlite_download_url: "https://github.com/rqlite/rqlite/releases/download/v{{ rqlite_version }}/rqlite-v{{ rqlite_version }}-linux-amd64.tar.gz"
+    rqlite_extract_dir: "/opt/rqlite"
+    rqlite_data_dir: "/var/lib/rqlite"
+    rqlite_http_port: 4001
+    rqlite_raft_port: 4002
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - tar
+          - wget
+          - curl
+        state: present
+        update_cache: yes
+
+    - name: Create directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ rqlite_extract_dir }}"
+        - "{{ rqlite_data_dir }}"
+
+    - name: Download and extract rqlite
+      unarchive:
+        src: "{{ rqlite_download_url }}"
+        dest: "{{ rqlite_extract_dir }}"
+        remote_src: yes
+        creates: "{{ rqlite_extract_dir }}/rqlited"
+        extra_opts:
+          - --strip-components=1
+
+    - name: Create symlinks to rqlite binaries
+      file:
+        src: "{{ rqlite_extract_dir }}/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop:
+        - rqlited
+        - rqlite
+
+    - name: Create rqlite systemd service
+      template:
+        src: rqlited.service.j2
+        dest: /etc/systemd/system/rqlited.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Check if UFW is installed and enabled
+      command: ufw status
+      register: ufw_status
+      changed_when: false
+      failed_when: false
+
+    - name: Configure firewall with UFW if available
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: "ufw_status.rc == 0 and 'Status: active' in ufw_status.stdout"
+
+    - name: Ensure iptables allows required ports
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ item }}"
+        jump: ACCEPT
+      loop:
+        - "{{ rqlite_http_port }}"
+        - "{{ rqlite_raft_port }}"
+      when: "ufw_status.rc != 0 or 'Status: active' not in ufw_status.stdout"
+      ignore_errors: yes
+
+    - name: Enable and start rqlited service on leader node
+      systemd:
+        name: rqlited
+        enabled: yes
+        daemon_reload: yes
+        state: started
+      when: inventory_hostname == groups['rqlite_nodes'][0]
+
+    - name: Wait for leader node to be up
+      wait_for:
+        host: "{{ hostvars[groups['rqlite_nodes'][0]]['ansible_host'] }}"
+        port: "{{ rqlite_http_port }}"
+        timeout: 60
+      when: inventory_hostname != groups['rqlite_nodes'][0]
+      
+    - name: Debug connection to leader
+      shell: "curl -v {{ hostvars[groups['rqlite_nodes'][0]]['ansible_host'] }}:{{ rqlite_http_port }}/status"
+      register: connectivity_test
+      failed_when: false
+      when: inventory_hostname != groups['rqlite_nodes'][0]
+        
+    - name: Display connectivity test results
+      debug:
+        var: connectivity_test
+      when: inventory_hostname != groups['rqlite_nodes'][0]
+
+    - name: Enable and start rqlited service on follower nodes
+      systemd:
+        name: rqlited
+        enabled: yes
+        daemon_reload: yes
+        state: started
+      when: inventory_hostname != groups['rqlite_nodes'][0]
+
+    - name: Check service status on all nodes
+      shell: systemctl status rqlited
+      register: service_status
+      failed_when: false
+      
+    - name: Display service status
+      debug:
+        var: service_status.stdout_lines
+        
+    - name: Check service logs
+      shell: journalctl -u rqlited -n 50
+      register: service_logs
+      failed_when: false
+      
+    - name: Display service logs
+      debug:
+        var: service_logs.stdout_lines
+        
+    - name: Wait for all nodes to be up
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: "{{ rqlite_http_port }}"
+        timeout: 60
+      when: false
+
+    - name: Check cluster status
+      shell: "curl -s http://{{ hostvars[groups['rqlite_nodes'][0]]['ansible_host'] }}:{{ rqlite_http_port }}/nodes?pretty"
+      register: cluster_status
+      changed_when: false
+      when: inventory_hostname == groups['rqlite_nodes'][0]
+      
+    - name: Display cluster status
+      debug:
+        var: cluster_status.stdout
+      when: inventory_hostname == groups['rqlite_nodes'][0]
